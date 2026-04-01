@@ -1,7 +1,6 @@
----
 - name: TEST - channels Rocky Linux 8
-  hosts: localhost
-  connection: local
+  hosts: uyuni_srv
+  gather_facts: yes
   vars:
     uyuni_user: "admin"
     uyuni_pass: "alinealine"
@@ -14,7 +13,23 @@
           - rockylinux8-x86_64-extras
           - rockylinux8-uyuni-client-x86_64
   tasks:
-    - name: "Creer channels par distro"
+    - name: "Vérifier si le conteneur Uyuni est démarré"
+      shell: |
+        if ! podman ps --filter "name=uyuni-server" --format "{{ '{{' }}.Names{{ '}}' }}" | grep -q uyuni-server; then
+          echo "starting"
+          podman start uyuni-server
+        else
+          echo "running"
+        fi
+      register: uyuni_container_status
+      changed_when: "'starting' in uyuni_container_status.stdout"
+
+    - name: "Attendre que le conteneur soit prêt"
+      wait_for:
+        timeout: 60
+      when: uyuni_container_status.changed
+
+    - name: "Créer channels par distro"
       command: >
         mgrctl exec --
         spacewalk-common-channels
@@ -29,10 +44,9 @@
       register: channel_create
       changed_when: "'already exists' not in channel_create.stdout"
       failed_when: channel_create.rc != 0 and 'already exists' not in channel_create.stdout
-      delegate_to: uyuni_srv
+
     - name: "Attendre fin de sync en cours"
       command: >
-        mgrctl exec --
         test ! -f /var/lib/spacewalk/reposync/{{ item.1 }}.lock
       loop: "{{ distros | subelements('channels') }}"
       loop_control:
@@ -42,7 +56,7 @@
       retries: 60
       delay: 60
       failed_when: false
-      delegate_to: uyuni_srv
+
     - name: "Synchroniser channel"
       command: mgrctl exec -- spacewalk-repo-sync -c {{ item.1 }}
       loop: "{{ distros | subelements('channels') }}"
@@ -50,4 +64,3 @@
         label: "{{ item.1 }}"
       async: 7200
       poll: 60
-      delegate_to: uyuni_srv
