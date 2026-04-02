@@ -1,0 +1,78 @@
+---
+- name: Créer les groupes dans Uyuni
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    uyuni_host:     "192.168.78.129"
+    uyuni_user:     "admin"
+    uyuni_password: "alinealine"
+    uyuni_url:      "http://{{ uyuni_host }}/rpc/api"
+
+  tasks:
+
+    - name: Login Uyuni
+      uri:
+        url:    "{{ uyuni_url }}"
+        method: POST
+        headers:
+          Content-Type: "text/xml"
+        body: |
+          <?xml version="1.0"?>
+          <methodCall>
+            <methodName>auth.login</methodName>
+            <params>
+              <param><value><string>{{ uyuni_user }}</string></value></param>
+              <param><value><string>{{ uyuni_password }}</string></value></param>
+            </params>
+          </methodCall>
+        return_content: true
+      register: login_response
+
+    - name: Extraire le token
+      set_fact:
+        session: "{{ login_response.content \
+          | regex_search('<string>(.*?)</string>', '\\1') \
+          | first }}"
+
+    - name: Créer les groupes
+      uri:
+        url:    "{{ uyuni_url }}"
+        method: POST
+        headers:
+          Content-Type: "text/xml"
+        body: |
+          <?xml version="1.0"?>
+          <methodCall>
+            <methodName>systemgroup.create</methodName>
+            <params>
+              <param><value><string>{{ session }}</string></value></param>
+              <param><value><string>{{ item.name }}</string></value></param>
+              <param><value><string>{{ item.desc }}</string></value></param>
+            </params>
+          </methodCall>
+        return_content: true
+      ignore_errors: true
+      loop:
+        - { name: "rockylinux", desc: "Groupe Rocky Linux" }
+        - { name: "debian",     desc: "Groupe Debian"      }
+        - { name: "ubuntu",     desc: "Groupe Ubuntu"      }
+    - name: Logout
+      uri:
+        url:    "{{ uyuni_url }}"
+        method: POST
+        headers:
+          Content-Type: "text/xml"
+        body: |
+          <?xml version="1.0"?>
+          <methodCall>
+            <methodName>auth.logout</methodName>
+            <params>
+              <param><value><string>{{ session }}</string></value></param>
+            </params>
+          </methodCall>
+        return_content: true
+
+    - name: Résultat
+      debug:
+        msg: "Groupes créés avec succès !"

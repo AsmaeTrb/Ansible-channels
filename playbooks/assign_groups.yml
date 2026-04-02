@@ -1,0 +1,255 @@
+---
+- name: Affecter les VMs à leur groupe OS
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    uyuni_host:     "192.168.78.129"
+    uyuni_user:     "admin"
+    uyuni_password: "alinealine"
+    uyuni_url:      "http://{{ uyuni_host }}/rpc/api"
+
+  tasks:
+
+    # ═══════════════════════════
+    # 1. LOGIN
+    # ═══════════════════════════
+    - name: Login Uyuni
+      uri:
+        url:    "{{ uyuni_url }}"
+        method: POST
+        headers:
+          Content-Type: "text/xml"
+        body: |
+          <?xml version="1.0"?>
+          <methodCall>
+            <methodName>auth.login</methodName>
+            <params>
+              <param><value><string>{{ uyuni_user }}</string></value></param>
+              <param><value><string>{{ uyuni_password }}</string></value></param>
+            </params>
+          </methodCall>
+        return_content: true
+      register: login_response
+
+    - name: Extraire le token
+      set_fact:
+        session: "{{ login_response.content
+          | regex_search('<string>(.*?)</string>', '\\1')
+          | first }}"
+
+    # ═══════════════════════════
+    # 2. ROCKY LINUX (8 + 9)
+    # ═══════════════════════════
+    - name: Récupérer VMs Rocky 8
+      uri:
+        url:    "{{ uyuni_url }}"
+        method: POST
+        headers:
+          Content-Type: "text/xml"
+        body: |
+          <?xml version="1.0"?>
+          <methodCall>
+            <methodName>channel.software.listSubscribedSystems</methodName>
+            <params>
+              <param><value><string>{{ session }}</string></value></param>
+              <param><value><string>rockylinux8-x86_64</string></value></param>
+            </params>
+          </methodCall>
+        return_content: true
+      register: rocky8_systems
+
+    - name: Récupérer VMs Rocky 9
+      uri:
+        url:    "{{ uyuni_url }}"
+        method: POST
+        headers:
+          Content-Type: "text/xml"
+        body: |
+          <?xml version="1.0"?>
+          <methodCall>
+            <methodName>channel.software.listSubscribedSystems</methodName>
+            <params>
+              <param><value><string>{{ session }}</string></value></param>
+              <param><value><string>rockylinux9-x86_64</string></value></param>
+            </params>
+          </methodCall>
+        return_content: true
+      register: rocky9_systems
+
+    - name: Fusionner les IDs Rocky 8 + Rocky 9
+      set_fact:
+        rocky_ids: "{{
+          rocky8_systems.content | regex_findall('<i4>(\\d+)</i4>') +
+          rocky9_systems.content | regex_findall('<i4>(\\d+)</i4>')
+        }}"
+
+    - name: Affecter Rocky 8 + 9 → groupe rockylinux
+      uri:
+        url:    "{{ uyuni_url }}"
+        method: POST
+        headers:
+          Content-Type: "text/xml"
+        body: |
+          <?xml version="1.0"?>
+          <methodCall>
+            <methodName>systemgroup.addOrRemoveSystems</methodName>
+            <params>
+              <param><value><string>{{ session }}</string></value></param>
+              <param><value><string>rockylinux</string></value></param>
+              <param>
+                <value><array><data>
+                  <value><int>{{ item }}</int></value>
+                </data></array></value>
+              </param>
+              <param><value><boolean>1</boolean></value></param>
+            </params>
+          </methodCall>
+        return_content: true
+      loop: "{{ rocky_ids }}"
+      when: rocky_ids | length > 0
+
+    # ═══════════════════════════
+    # 3. DEBIAN (12 + 13)
+    # ═══════════════════════════
+    - name: Récupérer VMs Debian 12
+      uri:
+        url:    "{{ uyuni_url }}"
+        method: POST
+        headers:
+          Content-Type: "text/xml"
+        body: |
+          <?xml version="1.0"?>
+          <methodCall>
+            <methodName>channel.software.listSubscribedSystems</methodName>
+            <params>
+              <param><value><string>{{ session }}</string></value></param>
+              <param><value><string>debian-12-pool-amd64-uyuni</string></value></param>
+            </params>
+          </methodCall>
+        return_content: true
+      register: debian12_systems
+
+    - name: Récupérer VMs Debian 13
+      uri:
+        url:    "{{ uyuni_url }}"
+        method: POST
+        headers:
+          Content-Type: "text/xml"
+        body: |
+          <?xml version="1.0"?>
+          <methodCall>
+            <methodName>channel.software.listSubscribedSystems</methodName>
+            <params>
+              <param><value><string>{{ session }}</string></value></param>
+              <param><value><string>debian-13-pool-amd64-uyuni</string></value></param>
+            </params>
+          </methodCall>
+        return_content: true
+      register: debian13_systems
+
+    - name: Fusionner les IDs Debian 12 + 13
+      set_fact:
+        debian_ids: "{{
+          debian12_systems.content | regex_findall('<i4>(\\d+)</i4>') +
+          debian13_systems.content | regex_findall('<i4>(\\d+)</i4>')
+        }}"
+
+    - name: Affecter Debian 12 + 13 → groupe debian
+      uri:
+        url:    "{{ uyuni_url }}"
+        method: POST
+        headers:
+          Content-Type: "text/xml"
+        body: |
+          <?xml version="1.0"?>
+          <methodCall>
+            <methodName>systemgroup.addOrRemoveSystems</methodName>
+            <params>
+              <param><value><string>{{ session }}</string></value></param>
+              <param><value><string>debian</string></value></param>
+              <param>
+                <value><array><data>
+                  <value><int>{{ item }}</int></value>
+                </data></array></value>
+              </param>
+              <param><value><boolean>1</boolean></value></param>
+            </params>
+          </methodCall>
+        return_content: true
+      loop: "{{ debian_ids }}"
+      when: debian_ids | length > 0
+
+    # ═══════════════════════════
+    # 4. UBUNTU 24.04
+    # ═══════════════════════════
+    - name: Récupérer VMs Ubuntu 24.04
+      uri:
+        url:    "{{ uyuni_url }}"
+        method: POST
+        headers:
+          Content-Type: "text/xml"
+        body: |
+          <?xml version="1.0"?>
+          <methodCall>
+            <methodName>channel.software.listSubscribedSystems</methodName>
+            <params>
+              <param><value><string>{{ session }}</string></value></param>
+              <param><value><string>ubuntu-24.04-pool-amd64-uyuni</string></value></param>
+            </params>
+          </methodCall>
+        return_content: true
+      register: ubuntu_systems
+
+    - name: Extraire les IDs Ubuntu
+      set_fact:
+        ubuntu_ids: "{{ ubuntu_systems.content
+          | regex_findall('<i4>(\\d+)</i4>') }}"
+
+    - name: Affecter Ubuntu → groupe ubuntu
+      uri:
+        url:    "{{ uyuni_url }}"
+        method: POST
+        headers:
+          Content-Type: "text/xml"
+        body: |
+          <?xml version="1.0"?>
+          <methodCall>
+            <methodName>systemgroup.addOrRemoveSystems</methodName>
+            <params>
+              <param><value><string>{{ session }}</string></value></param>
+              <param><value><string>ubuntu</string></value></param>
+              <param>
+                <value><array><data>
+                  <value><int>{{ item }}</int></value>
+                </data></array></value>
+              </param>
+              <param><value><boolean>1</boolean></value></param>
+            </params>
+          </methodCall>
+        return_content: true
+      loop: "{{ ubuntu_ids }}"
+      when: ubuntu_ids | length > 0
+
+    # ═══════════════════════════
+    # 5. LOGOUT
+    # ═══════════════════════════
+    - name: Logout
+      uri:
+        url:    "{{ uyuni_url }}"
+        method: POST
+        headers:
+          Content-Type: "text/xml"
+        body: |
+          <?xml version="1.0"?>
+          <methodCall>
+            <methodName>auth.logout</methodName>
+            <params>
+              <param><value><string>{{ session }}</string></value></param>
+            </params>
+          </methodCall>
+        return_content: true
+
+    - name: Terminé
+      debug:
+        msg: "Rocky 8+9 → rockylinux | Debian 12+13 → debian | Ubuntu → ubuntu"
