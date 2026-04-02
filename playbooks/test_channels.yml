@@ -46,8 +46,9 @@
       failed_when: channel_create.rc != 0 and 'already exists' not in channel_create.stdout
 
     - name: "Attendre fin de sync en cours"
+      # ✅ FIX 1 : mgrctl exec pour tester DANS le conteneur
       command: >
-        test ! -f /var/lib/spacewalk/reposync/{{ item.1 }}.lock
+        mgrctl exec -- test ! -f /var/lib/spacewalk/reposync/{{ item.1 }}.lock
       loop: "{{ distros | subelements('channels') }}"
       loop_control:
         label: "{{ item.1 }}"
@@ -62,5 +63,4 @@
       loop: "{{ distros | subelements('channels') }}"
       loop_control:
         label: "{{ item.1 }}"
-      async: 7200
-      poll: 60
+      # ✅ FIX 2 : plus d'async → exécution séquentielle, un channel à la fois
