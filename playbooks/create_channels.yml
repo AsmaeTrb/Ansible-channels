@@ -32,11 +32,11 @@
         -s localhost
         -u {{ uyuni_user }}
         -p {{ uyuni_pass }}
-        -a {{ item.arch }}
-        {{ item.name }}
-      loop: "{{ distros }}"
+        -a {{ item.0.arch }}
+        {{ item.1 }}
+      loop: "{{ distros | subelements('channels') }}"
       loop_control:
-        label: "{{ item.name }}"
+        label: "{{ item.1 }}"
       register: channel_result
       changed_when: "'already exists' not in channel_result.stdout"
       failed_when:
