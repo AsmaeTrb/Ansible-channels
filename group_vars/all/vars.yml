@@ -1,10 +1,10 @@
-vault_env: "production"
+vault_env: "dev"
 
 distros:
   - name: rockylinux8
     arch: x86_64
     channels:
-      - rockylinux8-x86_64
-      - rockylinux8-x86_64-appstream
-      - rockylinux8-x86_64-extras
-      - rockylinux8-uyuni-client-x86_64
+      - rockylinux8
+      - rockylinux8-appstream
+      - rockylinux8-extras
+      - rockylinux8-uyuni-client
