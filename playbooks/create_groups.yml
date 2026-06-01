@@ -4,7 +4,7 @@
   gather_facts: false
 
   vars:
-    vault_env: "production"
+    vault_env: "dev"
 
   tasks:
     - name: "VAULT | Récupération des secrets Uyuni"
