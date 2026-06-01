@@ -1,12 +1,33 @@
 pipeline {
     agent any
 
+    environment {
+        VAULT_ADDR = 'http://127.0.0.1:8200'
+    }
+
     stages {
-        stage('Run Ansible - Test Channels') {
+        stage('Checkout') {
             steps {
-                sshagent(credentials: ['ansible-ssh']) {
+                checkout scm
+                echo "✅ Code récupéré depuis Git"
+            }
+        }
+
+        stage('Channels') {
+            steps {
+                withCredentials([string(credentialsId: 'vault-token', variable: 'VAULT_TOKEN')]) {
                     sh '''
-                        ansible-playbook -i inventory.ini playbooks/test_channels.yml
+                        ansible-playbook -i inventory.ini playbooks/create_channels.yml
+                    '''
+                }
+            }
+        }
+
+        stage('Groups') {
+            steps {
+                withCredentials([string(credentialsId: 'vault-token', variable: 'VAULT_TOKEN')]) {
+                    sh '''
+                        ansible-playbook -i inventory.ini playbooks/create_groups.yml
                     '''
                 }
             }
@@ -15,10 +36,10 @@ pipeline {
 
     post {
         success {
-            echo '✅ Playbook test_channels exécuté avec succès !'
+            echo '✅ Channels et groupes créés avec succès !'
         }
         failure {
-            echo '❌ Erreur lors de l’exécution du playbook !'
+            echo '❌ Erreur pendant le pipeline !'
         }
     }
 }

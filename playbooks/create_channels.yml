@@ -1,0 +1,45 @@
+---
+- name: "Créer les channels Uyuni"
+  hosts: uyuni_server
+  gather_facts: false
+
+  vars:
+    vault_env: "production"
+
+  tasks:
+    - name: "VAULT | Récupération des secrets Uyuni"
+      set_fact:
+        vault_secrets: "{{ lookup('community.hashi_vault.hashi_vault',
+                           'secret/data/uyuni/' + vault_env,
+                           url=lookup('env', 'VAULT_ADDR'),
+                           token=lookup('env', 'VAULT_TOKEN')) }}"
+      no_log: true
+
+    - name: "VAULT | Extraction des variables"
+      set_fact:
+        uyuni_user: "{{ vault_secrets.uyuni_user }}"
+        uyuni_pass: "{{ vault_secrets.uyuni_password }}"
+      no_log: true
+
+    - name: "VAULT | Confirmation"
+      debug:
+        msg: "Secrets récupérés pour {{ uyuni_user }} sur {{ vault_secrets.uyuni_server }}"
+
+    - name: "Créer les channels par distro"
+      command: >
+        mgrctl exec --
+        spacewalk-common-channels
+        -s localhost
+        -u {{ uyuni_user }}
+        -p {{ uyuni_pass }}
+        -a {{ item.arch }}
+        {{ item.name }}
+      loop: "{{ distros }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: channel_result
+      changed_when: "'already exists' not in channel_result.stdout"
+      failed_when:
+        - channel_result.rc != 0
+        - "'already exists' not in channel_result.stdout"
+      no_log: true

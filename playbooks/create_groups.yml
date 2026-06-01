@@ -1,19 +1,34 @@
 ---
-- name: Créer les groupes dans Uyuni
+- name: "Créer les groupes systèmes Uyuni"
   hosts: localhost
   gather_facts: false
 
   vars:
-    uyuni_host:     "192.168.78.129"
-    uyuni_user:     "admin"
-    uyuni_password: "alinealine"
-    uyuni_url:      "http://{{ uyuni_host }}/rpc/api"
+    vault_env: "production"
 
   tasks:
+    - name: "VAULT | Récupération des secrets Uyuni"
+      set_fact:
+        vault_secrets: "{{ lookup('community.hashi_vault.hashi_vault',
+                           'secret/data/uyuni/' + vault_env,
+                           url=lookup('env', 'VAULT_ADDR'),
+                           token=lookup('env', 'VAULT_TOKEN')) }}"
+      no_log: true
 
-    - name: Login Uyuni
+    - name: "VAULT | Extraction des variables"
+      set_fact:
+        uyuni_user:     "{{ vault_secrets.uyuni_user }}"
+        uyuni_pass:     "{{ vault_secrets.uyuni_password }}"
+        uyuni_hostname: "{{ vault_secrets.uyuni_hostname }}"
+      no_log: true
+
+    - name: "VAULT | Confirmation"
+      debug:
+        msg: "Secrets récupérés pour {{ uyuni_user }} sur {{ uyuni_hostname }}"
+
+    - name: "Login Uyuni"
       uri:
-        url:    "{{ uyuni_url }}"
+        url: "http://{{ uyuni_hostname }}/rpc/api"
         method: POST
         headers:
           Content-Type: "text/xml"
@@ -23,21 +38,24 @@
             <methodName>auth.login</methodName>
             <params>
               <param><value><string>{{ uyuni_user }}</string></value></param>
-              <param><value><string>{{ uyuni_password }}</string></value></param>
+              <param><value><string>{{ uyuni_pass }}</string></value></param>
             </params>
           </methodCall>
         return_content: true
+        status_code: 200
       register: login_response
+      no_log: true
 
-    - name: Extraire le token
+    - name: "Extraire le token"
       set_fact:
-        session: "{{ login_response.content \
-          | regex_search('<string>(.*?)</string>', '\\1') \
-          | first }}"
+        session: "{{ login_response.content
+                   | regex_search('<string>(.*?)</string>', '\\1')
+                   | first }}"
+      no_log: true
 
-    - name: Créer les groupes
+    - name: "Créer les groupes"
       uri:
-        url:    "{{ uyuni_url }}"
+        url: "http://{{ uyuni_hostname }}/rpc/api"
         method: POST
         headers:
           Content-Type: "text/xml"
@@ -52,14 +70,23 @@
             </params>
           </methodCall>
         return_content: true
-      ignore_errors: true
+        status_code: 200
       loop:
         - { name: "rockylinux", desc: "Groupe Rocky Linux" }
         - { name: "debian",     desc: "Groupe Debian"      }
         - { name: "ubuntu",     desc: "Groupe Ubuntu"      }
-    - name: Logout
+      loop_control:
+        label: "{{ item.name }}"
+      register: group_result
+      failed_when:
+        - group_result.status != 200
+        - "'already exists' not in group_result.content"
+      changed_when:
+        - "'already exists' not in group_result.content"
+
+    - name: "Logout"
       uri:
-        url:    "{{ uyuni_url }}"
+        url: "http://{{ uyuni_hostname }}/rpc/api"
         method: POST
         headers:
           Content-Type: "text/xml"
@@ -72,7 +99,5 @@
             </params>
           </methodCall>
         return_content: true
-
-    - name: Résultat
-      debug:
-        msg: "Groupes créés avec succès !"
+        status_code: 200
+      no_log: true

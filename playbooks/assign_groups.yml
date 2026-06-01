@@ -4,7 +4,7 @@
   gather_facts: false
 
   vars:
-    uyuni_host:     "192.168.78.129"
+    uyuni_host:     "192.168.148.142"
     uyuni_user:     "admin"
     uyuni_password: "alinealine"
     uyuni_url:      "http://{{ uyuni_host }}/rpc/api"
