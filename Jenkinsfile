@@ -16,9 +16,11 @@ pipeline {
         stage('Channels') {
             steps {
                 withCredentials([string(credentialsId: 'vault-token', variable: 'VAULT_TOKEN')]) {
-                    sh '''
-                        ansible-playbook -i inventory.ini playbooks/create_channels.yml
-                    '''
+                    sshagent(credentials: ['ansible-ssh']) {
+                        sh '''
+                            ansible-playbook -i inventory.ini playbooks/create_channels.yml
+                        '''
+                    }
                 }
             }
         }
